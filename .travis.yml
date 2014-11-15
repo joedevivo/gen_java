@@ -1,0 +1,20 @@
+language: erlang
+
+otp_release:
+  - R16B03
+
+cache: apt
+
+branches:
+  only:
+    - master
+
+install: true
+
+before_install:
+  - mvn clean package
+
+script: make get-rebar all ct
+
+after_failure:
+  - cat common_test/logs/raw.log
