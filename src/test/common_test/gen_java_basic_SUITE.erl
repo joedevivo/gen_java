@@ -8,13 +8,16 @@
 all() ->  [erlang_abs_test].
 
 init_per_testcase(_, Config) ->
-    lager:start(),
+    application:stop(sasl),
+    ok = lager:start(),
     %% Bounce the lager backend for each test
     lager_common_test_backend:bounce(debug),
     Config.
 
 erlang_abs_test(Config) ->
+    ct:pal("Running erlang_abs_test"),
     Dir = jar_path(Config),
+    ct:pal("Looking for jar in: ~p", [Dir]),
     gen_java:start_link(Dir, "gen_java-0.0.1-SNAPSHOT-jar-with-dependencies.jar"),
 
     2 = gen_java:call(erlang, abs, [-2]),

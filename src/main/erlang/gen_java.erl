@@ -29,6 +29,7 @@ call(Module, Function, Args) ->
 %% gen_server callbacks
 init([Path, JarFile]) ->
     lager:info("starting gen_java (pid: ~p)", [self()]),
+
     %% this nodename limits us to only one java node per erlang node
     %% TODO: fix!
     Nodename = list_to_atom("gen_java_" ++ atom_to_list(node())),

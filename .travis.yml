@@ -12,10 +12,10 @@ branches:
 install: true
 
 before_install:
+  - sudo hostname travis-vm.local
   - mvn clean package
-
 
 script: make get-rebar all ct
 
 after_failure:
-  - cat common_test/logs/raw.log
+  - cat src/test/common_test/logs/raw.log
