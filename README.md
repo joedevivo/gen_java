@@ -17,6 +17,9 @@ If you want to expose a java method to erlang, it needs to be public,
 static and have argument and return types from the OTP JInterface
 library.
 
+For reference, the JInterface package reference can be found
+[here](http://www.erlang.org/doc/apps/jinterface/java/com/ericsson/otp/erlang/package-summary.html)
+
 
 ### Maven
 
@@ -28,8 +31,14 @@ You can't, we're not published anywhere yet
 
 **Subject to change**
 
-Right now you just start gen_java with `gen_java:start_link("/path/to/jar", "actual-jar-file.jar")`
+I'm going to try and make this as painless for the user as possible. I
+think we can do better than this, but for now it works as follows:
 
-Then, when you want to call your java function: `gen_java:call('com.whatever.package.Class', 'methodName', ['arg', <<"other arg">>])`
+1. Start gen_java with `gen_java:start_link("/path/to/jar", "actual-jar-file.jar")`
+
+2. to call your java function: `gen_java:call('com.whatever.package.Class', 'methodName', ['arg', <<"other arg">>])`
+
+Your Erlang wrapper to the java function will have the same dialyzer return type as `rpc:call/4`
+TODO: Provide an example of this
 
 easy peasy
