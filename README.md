@@ -29,16 +29,52 @@ You can't, we're not published anywhere yet
 
 ## Erlang
 
-**Subject to change**
+### Configure gen_java in your sys.config
 
-I'm going to try and make this as painless for the user as possible. I
-think we can do better than this, but for now it works as follows:
+```erlang
+{gen_java, [
+    {modules, [
+        {my_module, [
+            {jar, "/path/to/jar/file.jar"}
+        ]}
+    ]}
+]}
+```
 
-1. Start gen_java with `gen_java:start_link("/path/to/jar", "actual-jar-file.jar")`
+### Create your `my_module`
 
-2. to call your java function: `gen_java:call('com.whatever.package.Class', 'methodName', ['arg', <<"other arg">>])`
+```erlang
+-module(my_module).
 
-Your Erlang wrapper to the java function will have the same dialyzer return type as `rpc:call/4`
+-compile({parse_transform, gen_java_parse_transform}).
+```
+
+### Start your gen_java server
+
+#### On your own
+
+Start gen_java with `my_module:start_link()` or `my_module:start()`
+
+#### Or from a supervisor
+
+```erlang
+{my_module,
+    {my_module, start_link, []},
+    permanent, 5000, worker, [my_module]},
+```
+
+#### Call Java Methods!
+
+`my_module:call('com.whatever.package.Class', 'methodName', ['arg', <<"other arg">>])` will return the value you want!
+
+#### Optional: Add a convenience wrapper function
+
+```erlang
+method_name(Atom, Binary) ->
+    call('com.whatever.package.Class', 'methodName', [Atom, Binary]).
+```
+
+`my_module:call/3` will have the same dialyzer return type as `rpc:call/4`
 TODO: Provide an example of this
 
 easy peasy

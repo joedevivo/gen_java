@@ -5,7 +5,7 @@
 
 -compile([export_all]).
 
-all() ->  [erlang_abs_test, two_gen_javas_test].
+all() ->  [erlang_abs_test, two_gen_javas_test, parse_transform_test].
 
 init_per_testcase(_, Config) ->
     application:stop(sasl),
@@ -70,6 +70,22 @@ two_gen_javas_test(Config) ->
 
     my_java:stop(),
     my_java2:stop(),
+    ok.
+
+parse_transform_test(Config) ->
+    JavaModuleConfig = [{my_java, [{jar, filename:join([?config(java_path, Config),"gen_java-0.0.1-SNAPSHOT-jar-with-dependencies.jar"])}]}],
+    application:set_env(gen_java, modules, JavaModuleConfig),
+
+    {ok, _} = gen_java:start_link(my_java),
+
+    2 = my_java:abs(-2),
+    2.0 = my_java:abs(-2.0),
+    2 = my_java:java_abs(-2),
+    2.0 = my_java:java_abs(-2.0),
+    Node = atom_to_list(my_java:call(erlang, node, [])),
+    ct:pal("Node1: ~p", [Node]),
+
+    "gen_java_my_java_" = string:substr(Node, 1, 17),
     ok.
 
 jar_path(Config) ->

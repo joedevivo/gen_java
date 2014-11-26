@@ -1,18 +1,14 @@
 -module(my_java).
 
--behaviour(gen_java).
+-compile({parse_transform, gen_java_parse_transform}).
 
--export([start_link/0, start/0, call/3, stop/0]).
+-export([abs/1, node/0, java_abs/1]).
 
-start_link() ->
-    gen_java:start_link(?MODULE).
+abs(X) ->
+    call(erlang, abs, [X]).
 
-start() ->
-    gen_java:start(?MODULE).
+java_abs(X) ->
+    call('com.devivo.gen_java.Erlang', abs, [X]).
 
-%% gen_java callbacks
-call(Module, Function, Args) ->
-    gen_java:call(?MODULE, {Module, Function, Args}).
-
-stop() ->
-    gen_java:stop(?MODULE).
+node() ->
+    call(erlang, node, []).
