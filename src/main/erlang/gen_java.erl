@@ -35,23 +35,23 @@ call(ServerName, {Module, Function, Args}) ->
 
 %% gen_server callbacks
 init([Module]) ->
-    lager:info("starting gen_java (module: ~p, pid: ~p)", [Module, self()]),
+    lager:info("[gen_java][~p] starting (pid: ~p)", [Module, self()]),
 
     Config = module_config(Module),
-    lager:debug("gen_java_~p config: ~p", [Module, Config]),
+    lager:debug("[gen_java][~p] config: ~p", [Module, Config]),
 
     Jar = proplists:get_value(jar, Config),
 
     Nodename = list_to_atom("gen_java_" ++ atom_to_list(Module) ++ "_" ++ atom_to_list(node())),
     process_flag(trap_exit, true),
-    Port = start_jar(Nodename, Jar),
+    Port = start_jar(Nodename, Jar, Module),
 
-    log_first_lines_from_port(Port),
+    log_first_lines_from_port(Module, Port),
     %% Wait at most ten seconds for the node to come up
     case wait_until(
                     fun() ->
                         X = rpc:call(Nodename, erlang, node, [], 10000),
-                        lager:debug("rpc:call(~p, erlang, node, []) = ~p", [Nodename, X]),
+                        lager:debug("[gen_java][~p] rpc:call(~p, erlang, node, []) = ~p", [Module, Nodename, X]),
                         Nodename =:= X
                     end, 20, 1000) of
         ok ->
@@ -79,7 +79,7 @@ handle_info({Port, {data, {_Type, Data}}}, #gen_java_state { port = Port, module
     {noreply, State};
 handle_info({'EXIT', _, _}, #gen_java_state { port = Port, module = M } = State) ->
     %% TODO: I forget why it doesn't care. Investigate and document
-    lager:info("[gen_java][~p] received an 'EXIT', but doesn't care"),
+    lager:info("[gen_java][~p] received an 'EXIT', but doesn't care", [M]),
     safe_port_close(Port),
     {stop, normal, State}.
 
@@ -99,15 +99,15 @@ code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
 %% private
--spec start_jar(atom(), file:filename()) -> port().
-start_jar(NodeToStart, JarFile) ->
+-spec start_jar(atom(), file:filename(), atom()) -> port().
+start_jar(NodeToStart, JarFile, Module) ->
     %% Spin up the Java server
     JavaFormatString = "java -server "
         ++ "-cp " ++ JarFile ++ " "
         ++ "com.devivo.gen_java.ErlangServer ~s ~s",
 
     Cmd = ?FMT(JavaFormatString, [NodeToStart, erlang:get_cookie()]),
-    lager:info(Cmd),
+    lager:info("[gen_java][~p] cmd: ~p", [Module, Cmd]),
     start_sh(Cmd).
 
 -spec module_config(atom()) -> [proplists:property()].
@@ -156,16 +156,16 @@ wait_until(Fun, Retry, Delay) when Retry > 0 ->
             wait_until(Fun, Retry-1, Delay)
     end.
 
-log_first_lines_from_port(Port) ->
-    log_port_lines(Port,3).
+log_first_lines_from_port(Module, Port) ->
+    log_port_lines(Module, Port,3).
 
-log_port_lines(_, 0) -> ok;
-log_port_lines(Port, N) ->
+log_port_lines(_, _, 0) -> ok;
+log_port_lines(M, Port, N) ->
     receive
         {Port, {data, {_Type, Data}}} ->
-            lager:info("[gen_java] startup: ~p", [Data])
+            lager:info("[gen_java][~p] startup: ~p", [M, Data])
     after
         20000 ->
             lager:info("[gen_java] didn't output anything on startup")
     end,
-    log_port_lines(Port, N-1).
+    log_port_lines(M, Port, N-1).
