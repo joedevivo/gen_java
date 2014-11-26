@@ -3,7 +3,7 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/2, stop/0, call/3]).
+-export([start_link/1, start/1, stop/1, call/2]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -14,27 +14,37 @@
 %% only wait 1 second for rpc:calls
 -define(RPC_TIMEOUT, 1000).
 
--record(state, { nodename,
-                 port :: port()}).
+-record(gen_java_state, {
+          module   = erlang:error({undefined, module})   :: atom(),
+          config   = erlang:error({undefined, config})   :: [proplists:property()] | undefined,
+          nodename = erlang:error({undefined, nodename}) :: atom(),
+          port     = erlang:error({undefined, port})     :: port() | undefined
+}).
 
-start_link(Path, JarFile) ->
-    gen_server:start_link({local, ?MODULE}, ?MODULE, [Path, JarFile], []).
+start_link(Module) ->
+    gen_server:start_link({local, Module}, ?MODULE, [Module], []).
 
-stop() ->
-    gen_server:cast(?MODULE, stop).
+start(Module) ->
+    gen_server:start({local, Module}, ?MODULE, [Module], []).
 
-call(Module, Function, Args) ->
-    gen_server:call(?MODULE, {call, {Module, Function, Args}}).
+stop(ServerName) ->
+    gen_server:cast(ServerName, stop).
+
+call(ServerName, {Module, Function, Args}) ->
+    gen_server:call(ServerName, {call, {Module, Function, Args}}).
 
 %% gen_server callbacks
-init([Path, JarFile]) ->
-    lager:info("starting gen_java (pid: ~p)", [self()]),
+init([Module]) ->
+    lager:info("starting gen_java (module: ~p, pid: ~p)", [Module, self()]),
 
-    %% this nodename limits us to only one java node per erlang node
-    %% TODO: fix!
-    Nodename = list_to_atom("gen_java_" ++ atom_to_list(node())),
+    Config = module_config(Module),
+    lager:debug("gen_java_~p config: ~p", [Module, Config]),
+
+    Jar = proplists:get_value(jar, Config),
+
+    Nodename = list_to_atom("gen_java_" ++ atom_to_list(Module) ++ "_" ++ atom_to_list(node())),
     process_flag(trap_exit, true),
-    Port = start_jar(Nodename, Path, JarFile),
+    Port = start_jar(Nodename, Jar),
 
     log_first_lines_from_port(Port),
     %% Wait at most ten seconds for the node to come up
@@ -46,46 +56,51 @@ init([Path, JarFile]) ->
                     end, 20, 1000) of
         ok ->
             rpc:call(Nodename, erlang, link, [self()]),
-            {ok, #state{ nodename = Nodename, port = Port }};
+            erlang:monitor_node(Nodename, true),
+            {ok, #gen_java_state{ module = Module, config = Config, nodename = Nodename, port = Port }};
         timeout ->
             {stop, timeout}
     end.
 
-handle_call({call, {Module, Function, Args}}, _From, #state{nodename = N} = State) ->
+handle_call({call, {Module, Function, Args}}, _From, #gen_java_state{nodename = N} = State) ->
     {reply, rpc:call(N, Module, Function, Args), State};
 handle_call(_Request, _From, State) ->
     {reply, ignore, State}.
 
-handle_cast(stop, #state { nodename = N } = State) ->
-    {rex, N} ! stop,
+handle_cast(stop, State) ->
     {stop, normal, State}.
 
+handle_info({nodedown, N}, State = #gen_java_state{nodename = N, module = M}) ->
+    lager:error("[gen_java][~p] Java node has gone down", [M]),
+    {stop, nodedown, State};
 %% Log data from the port at a debug level
-handle_info({Port, {data, {_Type, Data}}}, #state { port = Port } = State) ->
-    lager:info("[gen_java] ~s", [Data]),
+handle_info({Port, {data, {_Type, Data}}}, #gen_java_state { port = Port, module = M } = State) ->
+    lager:info("[gen_java][~p] ~s", [M, Data]),
     {noreply, State};
-handle_info({'EXIT', _, _}, #state { port = Port } = State) ->
+handle_info({'EXIT', _, _}, #gen_java_state { port = Port, module = M } = State) ->
     %% TODO: I forget why it doesn't care. Investigate and document
-    lager:info("gen_java received an 'EXIT', but doesn't care"),
+    lager:info("[gen_java][~p] received an 'EXIT', but doesn't care"),
     safe_port_close(Port),
-    %%{noreply, State#state { port = undefined, pid = undefined }}.
     {stop, normal, State}.
 
-terminate(_Reason, #state { nodename = undefined }) ->
+terminate(_Reason, #gen_java_state { nodename = undefined }) ->
     %% Java server isn't running; nothing to do
     ok;
-terminate(_Reason, #state{ nodename = N }) ->
+terminate(_Reason, #gen_java_state{ nodename = N, port = Port, module = M }) ->
     %% Java server appears to still be running; send kill signal and wait
     %% for it to shutdown.
+    unlink(Port),
+    lager:info("[gen_java][~p] Sending `rex ! stop` from terminate", [M]),
     {rex, N} ! stop,
+    safe_port_close(Port),
     ok.
 
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
 %% private
--spec start_jar(atom(), file:filename(), string()) -> port().
-start_jar(NodeToStart, Path, JarFile) ->
+-spec start_jar(atom(), file:filename()) -> port().
+start_jar(NodeToStart, JarFile) ->
     %% Spin up the Java server
     JavaFormatString = "java -server "
         ++ "-cp " ++ JarFile ++ " "
@@ -93,28 +108,31 @@ start_jar(NodeToStart, Path, JarFile) ->
 
     Cmd = ?FMT(JavaFormatString, [NodeToStart, erlang:get_cookie()]),
     lager:info(Cmd),
-    start_sh(Cmd, Path).
+    start_sh(Cmd).
 
-%-spec priv_dir() -> file:filename_all().
-%priv_dir() ->
-%    %% TODO: This priv_dir setting is wrong!
-%    case code:priv_dir(gen_java) of
-%        {error, bad_name} ->
-%            Path0 = filename:dirname(code:which(?MODULE)),
-%            Path1 = filename:absname_join(Path0, ".."),
-%            filename:join([Path1, "priv"]);
-%        Path ->
-%            filename:absname(Path)
-%    end.
+-spec module_config(atom()) -> [proplists:property()].
+module_config(Module) ->
+    case application:get_env(gen_java, modules) of
+        [] ->
+            undefined;
+        {ok, Modules} ->
+            case proplists:get_value(Module, Modules, undefined) of
+                undefined ->
+                    undefined;
+                ModuleConfig ->
+                    ModuleConfig
+            end
+    end.
 
--spec start_sh(string(), file:filename_all()) -> port().
-start_sh(Cmd, Dir) ->
+-spec start_sh(string()) -> port().
+start_sh(Cmd) ->
     Env = case application:get_env(gen_java, java_home) of
               undefined -> [];
               {ok, JH} -> [{"JAVA_HOME", JH}]
           end,
     Port = open_port({spawn, ?FMT("/bin/sh -c \"echo $$; exec ~s\"", [Cmd])},
-                     [{cd, Dir},
+                     [
+                      %%{cd, Dir},
                       {env, Env},
                       exit_status, {line, 16384},
                       use_stdio, stderr_to_stdout]),

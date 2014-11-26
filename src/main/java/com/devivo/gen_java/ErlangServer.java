@@ -52,6 +52,11 @@ public class ErlangServer {
                 if (atom.equals("stop")) {
                     keepGoing = false;
                     System.out.println("Rex received 'stop' message, shutting down.");
+
+                    // Let's clean up gracefully
+                    rex.exit("Rex received 'stop' message, shutting down.");
+                    self.closeMbox(rex);
+                    self.close();
                     System.exit(0);
                 } else {
                     System.out.println("Unexpected atom received by rex server: " + atom);
