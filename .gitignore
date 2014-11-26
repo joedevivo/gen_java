@@ -9,3 +9,7 @@ src/test/common_test/*.beam
 src/test/common_test/logs
 .eunit
 *.beam
+deps.plt
+relx
+.concrete
+.DS_Store

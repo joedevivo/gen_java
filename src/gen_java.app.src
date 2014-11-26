@@ -12,5 +12,8 @@
                   crypto,
                   lager
                  ]},
-  {env, []}
+  {env, [
+         {java_home, undefined},
+         {modules, []}
+        ]}
  ]}.
