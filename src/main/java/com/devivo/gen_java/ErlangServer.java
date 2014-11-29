@@ -34,6 +34,19 @@ public class ErlangServer {
                 new ErlangFunctionCacheKey("erlang", "abs", OtpErlangLong.class),
                 Erlang.class.getMethod("abs", OtpErlangLong.class));
 
+        // wrapper for java.util.System.getProperties()
+        RPCCache.put(
+                new ErlangFunctionCacheKey("java", "system_properties"),
+                Java.class.getMethod("system_properties"));
+
+        RPCCache.put(
+                new ErlangFunctionCacheKey("java", "system_env"),
+                Java.class.getMethod("system_env"));
+
+        RPCCache.put(
+                new ErlangFunctionCacheKey("java", "input_arguments"),
+                Java.class.getMethod("input_arguments"));
+
         OtpNode self = new OtpNode(nodename, cookie);
         System.out.println("Started node: " + self.node());
         boolean keepGoing = true;
