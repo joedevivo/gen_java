@@ -78,3 +78,20 @@ method_name(Atom, Binary) ->
 TODO: Provide an example of this
 
 easy peasy
+
+### Provided Java Functions:
+
+```erlang
+%% @doc java.lang.System.getProperites()
+-spec system_properties() -> [{atom(), binary()}].
+java:system_properties/0
+
+%% @doc java.lang.System.getenv()
+-spec system_env() -> [{binary(), binary()}].
+java:system_env/0
+
+%% @doc command line $JAVA_OPTS. (e.g. -Xmx512m)
+-spec input_arguments() -> binary().
+java:input_arguments/0
+
+```
