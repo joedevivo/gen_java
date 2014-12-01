@@ -13,6 +13,7 @@
 
 %% only wait 1 second for rpc:calls
 -define(RPC_TIMEOUT, 1000).
+-define(DEFAULT_THREAD_COUNT, 10).
 
 -record(gen_java_state, {
           module   = erlang:error({undefined, module})   :: atom(),
@@ -44,7 +45,7 @@ init([Module]) ->
 
     Nodename = list_to_atom("gen_java_" ++ atom_to_list(Module) ++ "_" ++ atom_to_list(node())),
     process_flag(trap_exit, true),
-    Port = start_jar(Nodename, Jar, Module),
+    Port = start_jar(Nodename, Jar, Module, proplists:get_value(thread_count, Config, ?DEFAULT_THREAD_COUNT)),
 
     log_first_lines_from_port(Module, Port),
     %% Wait at most ten seconds for the node to come up
@@ -99,21 +100,21 @@ code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
 %% private
--spec start_jar(atom(), file:filename(), atom()) -> port().
-start_jar(NodeToStart, JarFile, Module) ->
+-spec start_jar(atom(), file:filename(), atom(), pos_integer()) -> port().
+start_jar(NodeToStart, JarFile, Module, ThreadCount) ->
     %% Spin up the Java server
     JavaFormatString = "java -server "
         ++ "-cp " ++ JarFile ++ " "
-        ++ "com.devivo.gen_java.ErlangServer ~s ~s",
+        ++ "com.devivo.gen_java.ErlangServer ~s ~s ~p",
 
-    Cmd = ?FMT(JavaFormatString, [NodeToStart, erlang:get_cookie()]),
-    lager:info("[gen_java][~p] cmd: ~p", [Module, Cmd]),
+    Cmd = ?FMT(JavaFormatString, [NodeToStart, erlang:get_cookie(), ThreadCount]),
+    lager:info("[gen_java][~p] cmd: ~p", [Module, Cmd, ThreadCount]),
     start_sh(Cmd).
 
 -spec module_config(atom()) -> [proplists:property()].
 module_config(Module) ->
     case application:get_env(gen_java, modules) of
-        [] ->
+        undefined ->
             undefined;
         {ok, Modules} ->
             case proplists:get_value(Module, Modules, undefined) of

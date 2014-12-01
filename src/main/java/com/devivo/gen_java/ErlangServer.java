@@ -6,12 +6,15 @@ import java.lang.reflect.Method;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public class ErlangServer {
     public static void main(String[] stringArgs) throws Exception {
         // TODO: better argument parsing?
         String nodename = stringArgs[0];
         String cookie = stringArgs[1];
+
         System.out.println("Starting OTP Node '" + nodename + "' with cookie " + cookie);
 
         // RPC Cache
@@ -49,6 +52,21 @@ public class ErlangServer {
 
         OtpNode self = new OtpNode(nodename, cookie);
         System.out.println("Started node: " + self.node());
+
+        // Thread Pool Size
+        int threadPoolSize = 10;
+
+        // It's important that the first two output lines are about the node starting, which is why this is here
+        String size = stringArgs[2];
+        try {
+            threadPoolSize = Integer.parseInt(size);
+            System.out.println("Thread Pool Size : " + threadPoolSize);
+        } catch (NumberFormatException e) {
+            System.out.println("ThreadSize '" + size + "' could not be parsed into an integer, using default");
+        }
+
+        ExecutorService pool = Executors.newFixedThreadPool(threadPoolSize);
+
         boolean keepGoing = true;
 
         // rex is the erlang "Remote EXecution server"
@@ -57,6 +75,11 @@ public class ErlangServer {
             // rex.receive is a blocking call, so just hang out here until one shows up
             OtpErlangObject o = rex.receive();
 
+            // TODO: I'd love to have this loop do nothing but farm out rec.receive() calls to
+            // runable threads.
+
+            // TODO: the handling of the 'stop' atom requires a reference to 'self', so it lives here for now.
+            // TODO: make this a call to `init:stop/0`?
             // Process the incoming message.
             // If it's the OtpErlangAtom 'stop', we'll kill the loop
             if (o instanceof OtpErlangAtom) {
@@ -76,11 +99,12 @@ public class ErlangServer {
                 }
             // If it's not, we'll let the contructor of ErlangRemoteProcedureCallMessage
             // do all the dirty work
+            // TODO: Move dirty work out to it's own thread. It's still here because the RPCCache is a local variable
             } else {
                 ErlangRemoteProcedureCallMessage msg = null;
 
                 try {
-                    msg = new ErlangRemoteProcedureCallMessage(o);
+                    msg = new ErlangRemoteProcedureCallMessage(rex, o);
                 } catch (ErlangRemoteException erlE) {
                     erlE.send(rex);
                 } catch (Exception e) {
@@ -105,32 +129,38 @@ public class ErlangServer {
                 if(msg != null) {
                     if(msg.getMFA().match("erlang", "link", 1)) {
                         // erlang:link/1 is a special and required case.
+                        // It should only happen once, so let's not get all worried about
+                        // sending it to the thread pool
                         OtpErlangPid pid = (OtpErlangPid)(msg.getMFA().getArgs().elementAt(0));
                         try {
                             rex.link(pid);
-                            msg.send(rex, new OtpErlangAtom(true));
+                            msg.send(new OtpErlangAtom(true));
                         } catch (OtpErlangExit oee) {
                             System.out.println("erlang:link/1 failed: " + oee.reason());
-                            msg.send(rex, oee.reason());
+                            msg.send(oee.reason());
                         }
                     } else if(msg.getMFA().match("erlang", "node", 0)) {
                         // erlang:node/0 is a special and required case
-                        msg.send(rex, new OtpErlangAtom(nodename));
+                        msg.send(new OtpErlangAtom(nodename));
                     } else if(RPCCache.containsKey(msg.getMFA().getKey())) {
                         // This is where we check the cache
                         Method m = RPCCache.get(msg.getMFA().getKey());
-                        msg.send(rex, (OtpErlangObject) m.invoke(null, msg.getMFA().getArgs().elements()));
+                        msg.setMethod(m);
+
+                        pool.execute(msg);
+
                     } else {
                         // This means it's not in the cache, we should try and find it
                         // and add it.
                         Method m = find(msg.getMFA().getKey());
                         if (m != null) {
                             RPCCache.put(msg.getMFA().getKey(), m);
-                            msg.send(rex, (OtpErlangObject) m.invoke(null, msg.getMFA().getArgs().elements()));
+                            msg.setMethod(m);
+                            pool.execute(msg);
                         } else {
                             System.out.println("Bad RPC: " + msg.getMFA().getKey().toString());
                             // we couldn't add it, be nice and send a badrpc error back
-                            msg.send(rex, msg.toErlangBadRPC());
+                            msg.send(msg.toErlangBadRPC());
                         }
                     }
                 }
