@@ -2,18 +2,24 @@ package com.devivo.gen_java;
 
 import com.ericsson.otp.erlang.*;
 
-// { '$gen_call', {Pid::pid, Ref::ref}, {call::atom, Mod::atom, Fun::atom, List::list(), user:atom()}}
-public class ErlangRemoteProcedureCallMessage {
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
 
+// { '$gen_call', {Pid::pid, Ref::ref}, {call::atom, Mod::atom, Fun::atom, List::list(), user:atom()}}
+public class ErlangRemoteProcedureCallMessage implements Runnable {
+
+    private final OtpMbox rex;
     private OtpErlangPid fromPid;
     private OtpErlangRef fromRef;
 
     private ErlangModFunArgs mfa = null;
-    private OtpErlangPid remoteGroupLeaderPid;
+    private OtpErlangPid remoteGroupLeaderPid = null;
+    private Method method;
 
     // Contructor Deconstructs Erlang rpc:call into it's components
     // { '$gen_call', {Pid::pid, Ref::ref}, {call::atom, Mod::atom, Fun::atom, List::list(), user:atom()}}
-    public ErlangRemoteProcedureCallMessage(OtpErlangObject o) throws Exception {
+    public ErlangRemoteProcedureCallMessage(OtpMbox r, OtpErlangObject o) throws Exception {
+        this.rex = r;
         // If it's not a tuple, it's already wrong
         if (o instanceof OtpErlangTuple) {
             OtpErlangTuple rexCall = (OtpErlangTuple)o;
@@ -132,7 +138,39 @@ public class ErlangRemoteProcedureCallMessage {
         return new OtpErlangTuple(badrpcTuple);
     }
 
-    public void send(OtpMbox mbox, OtpErlangObject resp) {
-        mbox.send(this.fromPid, wrapResponse(resp));
+    public void send(OtpErlangObject resp) {
+        this.rex.send(this.fromPid, wrapResponse(resp));
     }
+
+    @Override
+    public void run() {
+        OtpErlangObject result = new OtpErlangAtom("null");
+        try {
+            result = (OtpErlangObject) this.method.invoke(null, getMFA().getArgs().elements());
+        } catch (IllegalAccessException iae) {
+            System.out.println("Illegal Access Exception");
+            result = error("Illegal Access Exception");
+        } catch (InvocationTargetException ite) {
+            System.out.println("Invocation Target Exception");
+            result = error("Invocation Target Exception");
+            // This should never happen, since the target is null
+        } catch (Exception e) {
+            // Maybe it's not reflection
+            System.out.println("Exception : " + e.getMessage());
+            result = error(e.getMessage());
+        }
+        this.send(result);
+    }
+
+    public void setMethod(Method method) {
+        this.method = method;
+    }
+
+    public static OtpErlangTuple error(String s) {
+        OtpErlangObject[] errorTuple = new OtpErlangObject[2];
+        errorTuple[0] = new OtpErlangAtom("error");
+        errorTuple[1] = new OtpErlangString(s);
+        return new OtpErlangTuple(errorTuple);
+    }
+
 }

@@ -35,7 +35,10 @@ You can't, we're not published anywhere yet
 {gen_java, [
     {modules, [
         {my_module, [
-            {jar, "/path/to/jar/file.jar"}
+            {jar, "/path/to/jar/file.jar"},
+            %% Default thread count is 10.
+            %% this is how big the java thread pool is
+            {thread_count, 10}
         ]}
     ]}
 ]}
