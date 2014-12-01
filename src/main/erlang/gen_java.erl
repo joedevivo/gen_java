@@ -114,7 +114,7 @@ start_jar(NodeToStart, JarFile, Module, ThreadCount) ->
 -spec module_config(atom()) -> [proplists:property()].
 module_config(Module) ->
     case application:get_env(gen_java, modules) of
-        [] ->
+        undefined ->
             undefined;
         {ok, Modules} ->
             case proplists:get_value(Module, Modules, undefined) of

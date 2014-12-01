@@ -11,8 +11,6 @@ import java.util.concurrent.Executors;
 
 public class ErlangServer {
     public static void main(String[] stringArgs) throws Exception {
-        int threadPoolSize = 10;
-
         // TODO: better argument parsing?
         String nodename = stringArgs[0];
         String cookie = stringArgs[1];
@@ -56,10 +54,13 @@ public class ErlangServer {
         System.out.println("Started node: " + self.node());
 
         // Thread Pool Size
+        int threadPoolSize = 10;
+
         // It's important that the first two output lines are about the node starting, which is why this is here
         String size = stringArgs[2];
         try {
             threadPoolSize = Integer.parseInt(size);
+            System.out.println("Thread Pool Size : " + threadPoolSize);
         } catch (NumberFormatException e) {
             System.out.println("ThreadSize '" + size + "' could not be parsed into an integer, using default");
         }
@@ -74,6 +75,11 @@ public class ErlangServer {
             // rex.receive is a blocking call, so just hang out here until one shows up
             OtpErlangObject o = rex.receive();
 
+            // TODO: I'd love to have this loop do nothing but farm out rec.receive() calls to
+            // runable threads.
+
+            // TODO: the handling of the 'stop' atom requires a reference to 'self', so it lives here for now.
+            // TODO: make this a call to `init:stop/0`?
             // Process the incoming message.
             // If it's the OtpErlangAtom 'stop', we'll kill the loop
             if (o instanceof OtpErlangAtom) {
@@ -93,6 +99,7 @@ public class ErlangServer {
                 }
             // If it's not, we'll let the contructor of ErlangRemoteProcedureCallMessage
             // do all the dirty work
+            // TODO: Move dirty work out to it's own thread. It's still here because the RPCCache is a local variable
             } else {
                 ErlangRemoteProcedureCallMessage msg = null;
 
@@ -192,23 +199,4 @@ public class ErlangServer {
                     "Entry: { " + i.getKey().toString() + ", " + i.getValue().toString() + " }" );
         }
     }
-    /*
-    class Handler implements Runnable {
-        private final ErlangRemoteProcedureCallMessage h_msg;
-        private final OtpMbox h_rex;
-        private final Method h_m;
-        private final OtpErlangObject[] h_args;
-
-        Handler(ErlangRemoteProcedureCallMessage msg, OtpMbox r, Method m, OtpErlangObject[] args) {
-            this.h_msg = msg;
-            this.h_rex = r;
-            this.h_m = m;
-            this.h_args = args;
-        }
-
-        public void run() {
-            h_msg.send(h_rex, (OtpErlangObject) h_m.invoke(null, h_args));
-        }
-    }
-    */
 }

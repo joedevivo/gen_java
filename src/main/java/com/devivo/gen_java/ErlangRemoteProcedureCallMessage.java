@@ -147,17 +147,11 @@ public class ErlangRemoteProcedureCallMessage implements Runnable {
         OtpErlangObject result = new OtpErlangAtom("null");
         try {
             result = (OtpErlangObject) this.method.invoke(null, getMFA().getArgs().elements());
-        } catch (IllegalAccessException iae) {
-            System.out.println("Illegal Access Exception");
-            result = error("Illegal Access Exception");
-        } catch (InvocationTargetException ite) {
-            System.out.println("Invocation Target Exception");
-            result = error("Invocation Target Exception");
-            // This should never happen, since the target is null
         } catch (Exception e) {
-            // Maybe it's not reflection
-            System.out.println("Exception : " + e.getMessage());
-            result = error(e.getMessage());
+            // This could "technically" throw a InvocationTargetException or an
+            // IllegalAccessException. We'll write defensive code for that eventually
+            System.out.println(e.getClass().getName() + " : " + e.getMessage());
+            result = error(e.getClass().getName() + " : " + e.getMessage());
         }
         this.send(result);
     }
