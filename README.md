@@ -56,7 +56,7 @@ You can't, we're not published anywhere yet
 
 #### On your own
 
-Start gen_java with `my_module:start_link()` or `my_module:start()`
+Start gen_java with `my_module:start_link()` or `my_module:start()`. Those functions are free with the parse transform, so don't worry about it.
 
 #### Or from a supervisor
 
@@ -70,15 +70,22 @@ Start gen_java with `my_module:start_link()` or `my_module:start()`
 
 `my_module:call('com.whatever.package.Class', 'methodName', ['arg', <<"other arg">>])` will return the value you want!
 
+Worried about waiting forever? There's a `call/4` that allows you to specify a timeout.
+
 #### Optional: Add a convenience wrapper function
 
 ```erlang
+-spec method_name(atom(), binary()) -> my_return_type() | gen_java:badrpc().
 method_name(Atom, Binary) ->
     call('com.whatever.package.Class', 'methodName', [Atom, Binary]).
 ```
 
 `my_module:call/3` will have the same dialyzer return type as `rpc:call/4`
-TODO: Provide an example of this
+
+For fun, We provide `gen_java:badrpc()` for you to use in addition to
+your expected return type. This will let you just append ` |
+gen_java:badrpc()` to your spec and then fuggedaboudit.
+
 
 easy peasy
 

@@ -3,7 +3,7 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/1, start/1, stop/1, call/2]).
+-export([start_link/1, start/1, stop/1, call/4, call/5]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
@@ -11,8 +11,6 @@
 
 -define(FMT(Str, Args), lists:flatten(io_lib:format(Str, Args))).
 
-%% only wait 1 second for rpc:calls
--define(RPC_TIMEOUT, 1000).
 -define(DEFAULT_THREAD_COUNT, 10).
 
 -record(gen_java_state, {
@@ -22,19 +20,39 @@
           port     = erlang:error({undefined, port})     :: port() | undefined
 }).
 
+-type badrpc() :: {badrpc, term()}.
+-export_type([badrpc/0]).
+
+-spec start_link(module()) -> {ok, pid()}
+                            | ignore
+                            | {error, {already_started, pid()}}
+                            | {error, term()}.
 start_link(Module) ->
     gen_server:start_link({local, Module}, ?MODULE, [Module], []).
 
+
+-spec start(module()) -> {ok, pid()}
+                       | ignore
+                       | {error, {already_started, pid()}}
+                       | {error, term()}.
 start(Module) ->
     gen_server:start({local, Module}, ?MODULE, [Module], []).
 
+-spec stop(module()) -> ok.
 stop(ServerName) ->
     gen_server:cast(ServerName, stop).
 
-call(ServerName, {Module, Function, Args}) ->
+-spec call(atom(), atom(), atom(), [term()]) -> term() | {badrpc, term()}.
+call(ServerName, Module, Function, Args) ->
     gen_server:call(ServerName, {call, {Module, Function, Args}}).
 
+-spec call(atom(), atom(), atom(), [term()], (pos_integer() | infinity)) -> term() | {badrpc, term()}.
+call(ServerName, Module, Function, Args, Timeout) ->
+    gen_server:call(ServerName, {call, {Module, Function, Args, Timeout}}).
+
 %% gen_server callbacks
+-spec init([module()]) -> {ok, #gen_java_state{}}
+                        | {ok, #gen_java_state{}, (pos_integer() | infinity | hibernate)}.
 init([Module]) ->
     lager:info("[gen_java][~p] starting (pid: ~p)", [Module, self()]),
 
@@ -63,14 +81,35 @@ init([Module]) ->
             {stop, timeout}
     end.
 
+-spec handle_call(
+        ({call, {module(), atom(), [term()]}} |
+         {call, {module(), atom(), [term()], timeout()}} |
+         term()),
+        {pid(), reference()},
+        #gen_java_state{}) ->
+                         {reply, (ignore | badrpc()| term()), #gen_java_state{}}.
 handle_call({call, {Module, Function, Args}}, _From, #gen_java_state{nodename = N} = State) ->
     {reply, rpc:call(N, Module, Function, Args), State};
+handle_call({call, {Module, Function, Args, Timeout}}, _From, #gen_java_state{nodename = N} = State) ->
+    {reply, rpc:call(N, Module, Function, Args, Timeout), State};
 handle_call(_Request, _From, State) ->
     {reply, ignore, State}.
 
+-spec handle_cast((stop | term()), #gen_java_state{}) ->
+                         {stop, normal, #gen_java_state{}}
+                       | {noreply, #gen_java_state{}}.
 handle_cast(stop, State) ->
-    {stop, normal, State}.
+    {stop, normal, State};
+handle_cast(_Msg, State) ->
+    {noreply, State}.
 
+-spec handle_info(
+        ({nodedown, node()} |
+         {port(), {data, {term(), term()}}} |
+         {'EXIT', term(), term()}),
+        #gen_java_state{}) ->
+                         {stop, (nodedown | normal), #gen_java_state{}} |
+                         {noreply, #gen_java_state{}}.
 handle_info({nodedown, N}, State = #gen_java_state{nodename = N, module = M}) ->
     lager:error("[gen_java][~p] Java node has gone down", [M]),
     {stop, nodedown, State};
@@ -82,8 +121,11 @@ handle_info({'EXIT', _, _}, #gen_java_state { port = Port, module = M } = State)
     %% TODO: I forget why it doesn't care. Investigate and document
     lager:info("[gen_java][~p] received an 'EXIT', but doesn't care", [M]),
     safe_port_close(Port),
-    {stop, normal, State}.
+    {stop, normal, State};
+handle_info(_Msg, State) ->
+    {noreply, State}.
 
+-spec terminate(term(), #gen_java_state{}) -> ok.
 terminate(_Reason, #gen_java_state { nodename = undefined }) ->
     %% Java server isn't running; nothing to do
     ok;
@@ -96,6 +138,7 @@ terminate(_Reason, #gen_java_state{ nodename = N, port = Port, module = M }) ->
     safe_port_close(Port),
     ok.
 
+-spec code_change(term(), #gen_java_state{}, term()) -> {ok, #gen_java_state{}}.
 code_change(_OldVsn, State, _Extra) ->
     {ok, State}.
 
