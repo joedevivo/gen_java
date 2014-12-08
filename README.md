@@ -5,9 +5,7 @@ gen_java
 
 This project generates two artifacts:
 * a .jar file that includes all you need to build your own java project that can respond to erlang's `rpc:call/4` function
-* an erlang dependency that provides a `gen_java` behaviour that you can implement.
-
-TODO: not a behavior yet, just a gen server.
+* an erlang dependency that provides a `gen_java` server that you can implement via parse transform.
 
 ## Java Face
 
