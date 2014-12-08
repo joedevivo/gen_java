@@ -90,7 +90,7 @@ easy peasy
 ### Provided Java Functions:
 
 ```erlang
-%% @doc java.lang.System.getProperites()
+%% @doc java.lang.System.getProperties()
 -spec system_properties() -> [{atom(), binary()}].
 java:system_properties/0
 
