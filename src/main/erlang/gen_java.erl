@@ -151,8 +151,8 @@ start_jar(NodeToStart, JarFile, Module, ThreadCount) ->
         ++ "com.devivo.gen_java.ErlangServer ~s ~s ~p",
 
     Cmd = ?FMT(JavaFormatString, [NodeToStart, erlang:get_cookie(), ThreadCount]),
-    lager:info("[gen_java][~p] cmd: ~p", [Module, Cmd, ThreadCount]),
-    start_sh(Cmd).
+    lager:info("[gen_java][~p] cmd: ~p", [Module, Cmd]),
+    start_sh(Cmd, dir(Module)).
 
 -spec module_config(atom()) -> [proplists:property()].
 module_config(Module) ->
@@ -168,20 +168,30 @@ module_config(Module) ->
             end
     end.
 
--spec start_sh(string()) -> port().
-start_sh(Cmd) ->
+-spec start_sh(string(), file:filename_all()) -> port().
+start_sh(Cmd, Dir) ->
     Env = case application:get_env(gen_java, java_home) of
+              %% If undefined
               undefined -> [];
+              %% If defined as 'undefined'
+              {ok, undefined} -> [];
+              %% If actually defined
               {ok, JH} -> [{"JAVA_HOME", JH}]
           end,
     Port = open_port({spawn, ?FMT("/bin/sh -c \"echo $$; exec ~s\"", [Cmd])},
                      [
-                      %%{cd, Dir},
+                      {cd, Dir},
                       {env, Env},
                       exit_status, {line, 16384},
                       use_stdio, stderr_to_stdout]),
     link(Port),
     Port.
+
+-spec dir(module()) -> file:filename_all().
+dir(Module) ->
+    Path0 = filename:dirname(code:which(Module)),
+    Path1 = filename:absname_join(Path0, ".."),
+    filename:absname(Path1).
 
 safe_port_close(Port) when is_port(Port) ->
     port_close(Port);
