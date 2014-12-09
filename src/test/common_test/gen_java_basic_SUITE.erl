@@ -5,6 +5,8 @@
 
 -compile([export_all]).
 
+-define(JARJAR, "gen_java-0.1.0-jar-with-dependencies.jar").
+
 all() ->  [erlang_abs_test, two_gen_javas_test, parse_transform_test].
 
 init_per_testcase(_, Config) ->
@@ -21,7 +23,7 @@ init_per_testcase(_, Config) ->
 erlang_abs_test(Config) ->
     ct:pal("Running erlang_abs_test"),
 
-    JavaModuleConfig = [{my_java, [{jar, filename:join([?config(java_path, Config),"gen_java-0.0.1-SNAPSHOT-jar-with-dependencies.jar"])}]}],
+    JavaModuleConfig = [{my_java, [{jar, filename:join([?config(java_path, Config), ?JARJAR])}]}],
     application:set_env(gen_java, modules, JavaModuleConfig),
 
     {ok, _} = gen_java:start_link(my_java),
@@ -39,8 +41,8 @@ erlang_abs_test(Config) ->
 two_gen_javas_test(Config) ->
 
     JavaModuleConfig = [
-                        {my_java, [{jar, filename:join([?config(java_path, Config),"gen_java-0.0.1-SNAPSHOT-jar-with-dependencies.jar"])}]},
-                        {my_java2, [{jar, filename:join([?config(java_path, Config),"gen_java-0.0.1-SNAPSHOT-jar-with-dependencies.jar"])}]}
+                        {my_java, [{jar, filename:join([?config(java_path, Config), ?JARJAR])}]},
+                        {my_java2, [{jar, filename:join([?config(java_path, Config),?JARJAR])}]}
                        ],
     application:set_env(gen_java, modules, JavaModuleConfig),
 
@@ -73,7 +75,7 @@ two_gen_javas_test(Config) ->
     ok.
 
 parse_transform_test(Config) ->
-    JavaModuleConfig = [{my_java, [{jar, filename:join([?config(java_path, Config),"gen_java-0.0.1-SNAPSHOT-jar-with-dependencies.jar"])}]}],
+    JavaModuleConfig = [{my_java, [{jar, filename:join([?config(java_path, Config),?JARJAR])}]}],
     application:set_env(gen_java, modules, JavaModuleConfig),
 
     {ok, _} = gen_java:start_link(my_java),

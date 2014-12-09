@@ -21,9 +21,15 @@ For reference, the JInterface package reference can be found
 
 ### Maven
 
-TODO: How to pull in the maven dependency to your project.
+You should be able to pull from Maven Central pretty soon with this:
 
-You can't, we're not published anywhere yet
+```xml
+<dependency>
+    <groupId>com.devivo</groupId>
+    <artifactId>gen_java</artifactId>
+    <version>0.1.0</version>
+</dependency>
+```
 
 ## Erlang
 
