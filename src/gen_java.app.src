@@ -2,7 +2,7 @@
 {application, gen_java,
  [
   {description, "gen_java"},
-  {vsn, "0.1.1"},
+  {vsn, "0.1.2"},
   {modules, [gen_java]},
   {registered, []},
   {applications, [
