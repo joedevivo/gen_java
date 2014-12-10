@@ -35,6 +35,9 @@ erlang_abs_test(Config) ->
     2 = my_java:call('com.devivo.gen_java.Erlang', abs, [-2]),
     2.0 = my_java:call('com.devivo.gen_java.Erlang', abs, [-2.0]),
 
+    %% Test init call back
+    <<"init">> = my_java:call('com.devivo.gen_java.Java', get_cookie, []),
+
     my_java:stop(),
     ok.
 
