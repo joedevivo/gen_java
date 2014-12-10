@@ -70,6 +70,19 @@ Start gen_java with `my_module:start_link()` or `my_module:start()`. Those funct
     permanent, 5000, worker, [my_module]},
 ```
 
+#### Optional: Init Hollaback
+
+Don't call it a callback, 'cause it's not a behaviour. You can add an
+`init/1` hollaback to your module to do some initialization of your
+JVM node. The only trick is that you have to use `rpc:call/4` since
+the `gen_server` isn't started yet.
+
+```erlang
+-spec init(atom()) -> ok.
+init(Nodename) ->
+    rpc:call(Nodename, 'com.yourcompany.package', 'init', [<<SomeState>>]).
+```
+
 #### Call Java Methods!
 
 `my_module:call('com.whatever.package.Class', 'methodName', ['arg', <<"other arg">>])` will return the value you want!

@@ -11,6 +11,17 @@ import java.util.List;
 
 public class Java {
 
+    private static OtpErlangBinary cookie = null;
+
+    public static OtpErlangAtom set_cookie(OtpErlangBinary c) {
+        cookie = c;
+        return new OtpErlangAtom("ok");
+    }
+
+    public static OtpErlangBinary get_cookie() {
+        return cookie;
+    }
+
     public static OtpErlangList system_properties() {
         List<OtpErlangTuple> l = new ArrayList<OtpErlangTuple>();
         Iterator<Map.Entry<Object, Object>> it = System.getProperties().entrySet().iterator();

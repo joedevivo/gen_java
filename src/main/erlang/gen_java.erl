@@ -14,14 +14,18 @@
 -define(DEFAULT_THREAD_COUNT, 10).
 
 -record(gen_java_state, {
-          module   = erlang:error({undefined, module})   :: atom(),
-          config   = erlang:error({undefined, config})   :: [proplists:property()] | undefined,
-          nodename = erlang:error({undefined, nodename}) :: atom(),
-          port     = erlang:error({undefined, port})     :: port() | undefined
+          module   = undefined :: module() | undefined,
+          config   = undefined :: [proplists:property()] | undefined,
+          nodename = undefined :: atom() | undefined,
+          port     = undefined :: port() | undefined
 }).
 
 -type badrpc() :: {badrpc, term()}.
 -export_type([badrpc/0]).
+
+-type init_return() :: {ok, #gen_java_state{}}
+                     | {ok, #gen_java_state{}, (pos_integer() | infinity | hibernate)}
+                     | {stop, atom()}.
 
 -spec start_link(module()) -> {ok, pid()}
                             | ignore
@@ -51,20 +55,35 @@ call(ServerName, Module, Function, Args, Timeout) ->
     gen_server:call(ServerName, {call, {Module, Function, Args, Timeout}}).
 
 %% gen_server callbacks
--spec init([module()]) -> {ok, #gen_java_state{}}
-                        | {ok, #gen_java_state{}, (pos_integer() | infinity | hibernate)}.
+-spec init([module()]) -> init_return().
 init([Module]) ->
     lager:info("[gen_java][~p] starting (pid: ~p)", [Module, self()]),
+    process_flag(trap_exit, true),
+    init_loaded(Module, #gen_java_state{}).
 
+-spec init_loaded(module(), #gen_java_state{}) -> init_return().
+init_loaded(Module, State) ->
+    %% Is it a real module or is it Memorex?!
+    case code:is_loaded(Module) of
+        false ->
+            lager:error("[gen_java][~p] ~p is not a loaded module", [Module, Module]),
+            {stop, not_loaded};
+        _ ->
+            init_config(State#gen_java_state{module=Module})
+    end.
+
+-spec init_config(#gen_java_state{}) -> init_return().
+init_config(#gen_java_state{module=Module} = State) ->
     Config = module_config(Module),
     lager:debug("[gen_java][~p] config: ~p", [Module, Config]),
-
-    Jar = proplists:get_value(jar, Config),
-
     Nodename = list_to_atom("gen_java_" ++ atom_to_list(Module) ++ "_" ++ atom_to_list(node())),
-    process_flag(trap_exit, true),
-    Port = start_jar(Nodename, Jar, Module, proplists:get_value(thread_count, Config, ?DEFAULT_THREAD_COUNT)),
+    init_start_port(State#gen_java_state{config = Config, nodename = Nodename}).
 
+-spec init_start_port(#gen_java_state{}) -> init_return().
+init_start_port(#gen_java_state{config=Config, nodename=Nodename, module=Module} = State) ->
+    Jar = proplists:get_value(jar, Config),
+    Threads = proplists:get_value(thread_count, Config, ?DEFAULT_THREAD_COUNT),
+    Port = start_jar(Nodename, Jar, Module, Threads),
     log_first_lines_from_port(Module, Port),
     %% Wait at most ten seconds for the node to come up
     case wait_until(
@@ -76,10 +95,22 @@ init([Module]) ->
         ok ->
             rpc:call(Nodename, erlang, link, [self()]),
             erlang:monitor_node(Nodename, true),
-            {ok, #gen_java_state{ module = Module, config = Config, nodename = Nodename, port = Port }};
+            init_callback( State#gen_java_state{ port = Port });
         timeout ->
             {stop, timeout}
     end.
+
+-spec init_callback(#gen_java_state{}) -> {ok, #gen_java_state{}}.
+init_callback(#gen_java_state{module=Module, nodename=N} = State) ->
+    %% Module:init callback!
+    Exports = Module:module_info(exports),
+    case lists:member({init,1}, Exports) of
+        true ->
+            Module:init(N);
+        _ ->
+            ok
+    end,
+    {ok, State}.
 
 -spec handle_call(
         ({call, {module(), atom(), [term()]}} |

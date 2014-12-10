@@ -2,7 +2,7 @@
 
 -compile({parse_transform, gen_java_parse_transform}).
 
--export([abs/1, node/0, java_abs/1, abs_timeout/2]).
+-export([abs/1, node/0, java_abs/1, abs_timeout/2, init/1]).
 
 -spec abs(integer() | float()) -> integer() | float() | gen_java:badrpc().
 abs(X) ->
@@ -19,3 +19,7 @@ java_abs(X) ->
 -spec node() -> node() | gen_java:badrpc().
 node() ->
     call(erlang, node, []).
+
+-spec init(atom()) -> ok.
+init(Nodename) ->
+    rpc:call(Nodename, 'com.devivo.gen_java.Java', set_cookie, [<<"init">>]).
