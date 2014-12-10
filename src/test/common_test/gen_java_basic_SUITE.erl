@@ -5,7 +5,7 @@
 
 -compile([export_all]).
 
--define(JARJAR, "gen_java-0.1.1-SNAPSHOT-jar-with-dependencies.jar").
+-define(JARJAR, "gen_java-0.1.1-jar-with-dependencies.jar").
 
 all() ->  [erlang_abs_test, two_gen_javas_test, parse_transform_test].
 
