@@ -176,14 +176,29 @@ code_change(_OldVsn, State, _Extra) ->
 %% private
 -spec start_jar(atom(), file:filename(), atom(), pos_integer()) -> port().
 start_jar(NodeToStart, JarFile, Module, ThreadCount) ->
+    Env = case application:get_env(gen_java, java_home) of
+              %% If undefined
+              undefined -> [];
+              %% If defined as 'undefined'
+              {ok, undefined} -> [];
+              %% If actually defined
+              {ok, JH} ->
+                  [{"JAVA_HOME", JH}]
+          end,
+    Java = case proplists:is_defined("JAVA_HOME", Env) of
+        true ->
+            "$JAVA_HOME/bin/java";
+        _ ->
+            "java"
+        end,
     %% Spin up the Java server
-    JavaFormatString = "java -server "
+    JavaFormatString = Java ++ " -server "
         ++ "-cp " ++ JarFile ++ " "
         ++ "com.devivo.gen_java.ErlangServer ~s ~s ~p",
 
     Cmd = ?FMT(JavaFormatString, [NodeToStart, erlang:get_cookie(), ThreadCount]),
     lager:info("[gen_java][~p] cmd: ~p", [Module, Cmd]),
-    start_sh(Cmd, dir(Module)).
+    start_sh(Cmd, dir(Module), Env).
 
 -spec module_config(atom()) -> [proplists:property()].
 module_config(Module) ->
@@ -199,16 +214,8 @@ module_config(Module) ->
             end
     end.
 
--spec start_sh(string(), file:filename_all()) -> port().
-start_sh(Cmd, Dir) ->
-    Env = case application:get_env(gen_java, java_home) of
-              %% If undefined
-              undefined -> [];
-              %% If defined as 'undefined'
-              {ok, undefined} -> [];
-              %% If actually defined
-              {ok, JH} -> [{"JAVA_HOME", JH}]
-          end,
+-spec start_sh(string(), file:filename_all(), [proplists:property()]) -> port().
+start_sh(Cmd, Dir, Env) ->
     Port = open_port({spawn, ?FMT("/bin/sh -c \"echo $$; exec ~s\"", [Cmd])},
                      [
                       {cd, Dir},
