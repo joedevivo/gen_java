@@ -14,6 +14,7 @@
 -define(DEFAULT_THREAD_COUNT, 10).
 
 -record(gen_java_state, {
+          pid      = undefined :: string() | undefined,
           module   = undefined :: module() | undefined,
           config   = undefined :: [proplists:property()] | undefined,
           nodename = undefined :: atom() | undefined,
@@ -84,7 +85,8 @@ init_start_port(#gen_java_state{config=Config, nodename=Nodename, module=Module}
     Jar = proplists:get_value(jar, Config),
     Threads = proplists:get_value(thread_count, Config, ?DEFAULT_THREAD_COUNT),
     Port = start_jar(Nodename, Jar, Module, Threads),
-    log_first_lines_from_port(Module, Port),
+    Pid = log_first_lines_from_port(Module, Port),
+    lager:info("[gen_java][~p] OS Pid: ~p", [Module, Pid]),
     %% Wait at most ten seconds for the node to come up
     case wait_until(
                     fun() ->
@@ -95,7 +97,7 @@ init_start_port(#gen_java_state{config=Config, nodename=Nodename, module=Module}
         ok ->
             rpc:call(Nodename, erlang, link, [self()]),
             erlang:monitor_node(Nodename, true),
-            init_callback( State#gen_java_state{ port = Port });
+            init_callback( State#gen_java_state{ port = Port, pid = Pid});
         timeout ->
             {stop, timeout}
     end.
@@ -160,13 +162,15 @@ handle_info(_Msg, State) ->
 terminate(_Reason, #gen_java_state { nodename = undefined }) ->
     %% Java server isn't running; nothing to do
     ok;
-terminate(_Reason, #gen_java_state{ nodename = N, port = Port, module = M }) ->
+terminate(_Reason, #gen_java_state{ pid = Pid, nodename = N, port = Port, module = M }) ->
     %% Java server appears to still be running; send kill signal and wait
     %% for it to shutdown.
     unlink(Port),
     lager:info("[gen_java][~p] Sending `rex ! stop` from terminate", [M]),
     {rex, N} ! stop,
     safe_port_close(Port),
+    %% Sometimes it needs to be put down
+    os:cmd(?FMT("kill ~s", [Pid])),
     ok.
 
 -spec code_change(term(), #gen_java_state{}, term()) -> {ok, #gen_java_state{}}.
@@ -249,15 +253,19 @@ wait_until(Fun, Retry, Delay) when Retry > 0 ->
     end.
 
 log_first_lines_from_port(Module, Port) ->
-    log_port_lines(Module, Port,3).
+    Pid = log_port_lines(Module, Port, undefined, 1),
+    log_port_lines(Module, Port, undefined, 2),
+    Pid.
 
-log_port_lines(_, _, 0) -> ok;
-log_port_lines(M, Port, N) ->
-    receive
+log_port_lines(_, _, R, 0) -> R;
+log_port_lines(M, Port, _, N) ->
+    R = receive
         {Port, {data, {_Type, Data}}} ->
-            lager:info("[gen_java][~p] startup: ~p", [M, Data])
+            lager:info("[gen_java][~p] startup: ~p", [M, Data]),
+            Data
     after
         20000 ->
-            lager:info("[gen_java] didn't output anything on startup")
+            lager:info("[gen_java] didn't output anything on startup"),
+            undefined
     end,
-    log_port_lines(M, Port, N-1).
+    log_port_lines(M, Port, R, N-1).
